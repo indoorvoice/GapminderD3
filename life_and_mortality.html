@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Child Mortality and Life Expectancy</title>
+		<script type="text/javascript" src="d3.js"></script>
+		
+        <style>
+        path.line {
+        fill: none;
+            }
+        div {
+            margin-left: 100px;
+        }
+        select {
+          font-size: 20px;
+        }
+        </style>
+	</head>
+	
+    <body>
+        <div id='placemarker'>
+        </div>
+        
+        
+		<script>
+		// set constants
+        var data;
+		var h = 800;
+		var w = 1400;
+        var buffer = 20;
+        var margin = 100;
+        var svg;
+        var xScale;
+        var lifeYScale;
+        var mortalityYScale;
+        var dura = 1000;
+        var colMortality = 'coral';
+        var colLife = 'grey';
+        var font = '"Helvetica Neue", Helvetica, Arial, sans-serif';
+        var lines_made;
+            
+        // create line objects - they are basic curves which set years against a feature from data
+        var lifeLine = d3.line()
+        .curve(d3.curveBasisOpen)
+        .x(function(d) { return xScale(d.Year); })
+        .y(function(d) { return lifeYScale(d.LifeExp); });
+
+        var mortalityLine = d3.line()
+        .curve(d3.curveBasisOpen)
+        .x(function(d) { return xScale(d.Year); })
+        .y(function(d) { return mortalityYScale(d.under5mortality); });
+            
+       
+        
+		d3.csv("Gapminder_with_under5_mortality.csv", function(error, dataset) {
+            if(error) {
+                console.log(error)
+            } else {
+            data = dataset;
+            data.forEach(function(d){ // transform the relevant data into ints using unary plus
+            d.Year = +d.Year;
+            d.LifeExp = +d.LifeExp;
+            d.under5mortality = +d.under5mortality;
+            })}
+            
+            // create mins and maxes to set scales
+            var minYear = d3.min(data, function(d) {
+                       return 1969; })
+            var maxYear = d3.max(data, function(d) {
+                       return +d.Year; })
+            var minLifeExp = d3.min(data, function(d) {
+                       return +d.LifeExp; })
+            var maxLifeExp = d3.max(data, function(d) {
+                       return +d.LifeExp; })
+            var minMortality = d3.min(data, function(d) {
+                       return +d.under5mortality; })
+            var maxMortality = d3.max(data, function(d) {
+                       return +d.under5mortality; })
+            
+            // create x scale
+            xScale = d3.scaleLinear();
+            xScale.domain([minYear, maxYear+1]);
+            xScale.range([margin, w-(margin)]);
+                
+            // create first y scale to gauge life expectancy
+            lifeYScale = d3.scaleLinear();
+            lifeYScale.domain([minLifeExp, maxLifeExp]);
+            lifeYScale.range([h-(margin), (buffer*2)]);
+            
+            // create second y scale to show mortality rates
+            mortalityYScale = d3.scaleLinear();
+            mortalityYScale.domain([minMortality, maxMortality]);
+            mortalityYScale.range([h-(margin), (buffer*2)]);
+            
+            // prep the data
+            data = prepData(data);
+            
+            // create the svg element    
+                        d3.select("body")
+                        .append("svg")
+                        .attr("width", w)
+                        .attr("height", h)
+                        svg = d3.select("svg");
+            
+             // create x label
+            svg.append("text")
+                .attr("text-anchor", "end")
+                .attr("x", w/2) 
+                .attr("y", h - (h/15))
+                .attr("font-size", 30)
+                .attr("fill", "Chocolate")
+                .style("opacity", .6)
+                .attr("font-family", font)
+                .text("Year");
+            
+            // create y-label for mortality
+            svg.append("text")
+                .attr("text-anchor", "center")
+                .attr("x", -(w/2.5))
+                .attr("y", buffer*3)
+                .attr("font-size", 30)
+                .attr("transform", "rotate(-90)")
+                .attr("fill", colMortality)
+                .style("opacity", .6)
+                .text("Under 5 Mortality Rate (Per 1000)")
+                .attr("font-family", font);
+            
+            // create label for life expectancy
+            svg.append("text")
+                .attr("text-anchor", "center")
+                .attr("x", -(w/2.7))
+                .attr("y", w-(margin/2))
+                .attr("font-size", 30)
+                .attr("transform", "rotate(-90)")
+                .attr("fill", colLife)
+                .style("opacity", .6)
+                .text("Life Expectancy (Years)")
+                .attr("font-family", font);
+            
+            var selector = d3.select("#placemarker")
+                          .append("div")
+                          .append("select");
+            
+            selector
+                .on("change", function(d) {
+                    var country = d3.select(this).property("value");
+                    plotLines(data, country);
+                  });
+            
+            selector
+                .selectAll("option")
+                  .data(data[0].values)
+                  .enter()
+                    .append("option")
+                    .attr("value", function (d) { return d.Country; })
+                    .text(function (d) { return d.Country; });
+            
+            
+            // create text box to show which country is currently selected
+            // placed in center as that is the clearest place for most countries
+            var selectCountry = svg.append("text")
+                                    .attr("class", "countrySelected")
+                                    .attr("text-anchor", "center")
+                                    .attr("x", (w-margin*2.5)/2)
+                                    .attr("y", h/2)
+                                    .attr("font-size", 70)
+                                    .attr("fill", "teal")
+                                    .style("opacity", .1)
+                                    .attr("font-family", font)
+                                    .text('');
+            
+            // start text to instruct users
+            startText = svg.append('text')
+                            .attr('class', 'starttext')
+                            .attr('text-anchor', 'start')
+                            .attr('x', 200)
+                            .attr('y', 300)
+                            .attr('font-size', 35)
+                            .attr('fill', 'coral')
+                            .attr('opacity', .4)
+                            .attr("font-family", font)
+                            .text('Select a country to visualise the relationship');
+            
+            // start text to instruct users, part II
+            var startText2 = svg.append('text')
+                            .attr('class', 'starttext')
+                            .attr('text-anchor', 'start')
+                            .attr('x', 200)
+                            .attr('y', 350)
+                            .attr('font-size', 35)
+                            .attr('fill', colMortality)
+                            .attr('opacity', .4)
+                            .attr("font-family", font)
+                            .text('between Life \n Expectancy and the <5 Mortality Rate');
+            
+    
+            // setting up axes for the graph
+            
+            var xAxis = d3.axisBottom(xScale);
+            xAxis.tickArguments([7, "d"]);
+            var mortalityYAxis = d3.axisLeft(mortalityYScale);
+            mortalityYAxis.tickArguments([4]);
+            var lifeYAxis = d3.axisRight(lifeYScale);
+            lifeYAxis.tickArguments([4]);
+            
+            // append the axes
+            svg.append("g")
+                .attr("transform", "translate(0," +
+                     (h-margin) + ")")
+                .call(xAxis);
+                
+            svg.append("g")
+                .attr("transform", "translate(" + 
+                     margin + ",0)")
+                .call(mortalityYAxis);
+            
+            svg.append("g")
+                .attr("transform", "translate(" + 
+                     (w-(margin)) + ",0)")
+                .call(lifeYAxis);
+                        
+            });
+            
+            // function which calls the visualisation once a user clicks submit
+            setCountry = function() {
+                     var inputted = d3.select('#test').property('value');
+                     plotLines(data, inputted);
+                     }
+            
+            function prepData(data) {
+                // sort data by country, only allowing years where there is significant data
+                
+                // sort by years
+                data.sort(function(a,b) {
+                return a.Year - b.Year
+            });
+            
+            var countryNest = d3.nest()
+                .key(function(d) { 
+                    if (d.Year > 1969) return d.Country;})
+                .entries(data);
+                
+            return countryNest;
+            }
+            
+            
+            function plotLines(data, country) {
+                // draws the lines for each country selected
+                
+                // use for loop to identify correct country
+                // necessary as nest would not allow string indexing
+                // hacky solution but best that demonstrator and I could come up with
+                var i = 0;
+                for (i; i<data.length;i++) {
+                    if(data[i].key.toLowerCase() == country.toLowerCase()) // once key matches country, return that value
+                        var result = i;
+                }
+                data = data[result]; // index into data with that value
+                
+                d3.select('.countrySelected') //update which country is currently selected
+                    .transition()
+                    .duration(1000)
+                    .text(country);
+                
+            if (lines_made == null) { // if it's the first lines
+                
+                d3.selectAll('.starttext').remove(); // remove intro text
+                
+            // create line for life expectancy
+            lifer = svg.append("path")
+              .datum(data, function key(d) {
+                    return d.Year;
+                    })
+              .attr("class", "line")
+              .attr("d", function(d) { return lifeLine(d.values); })
+                .style('stroke', 'coral')
+               .style('stroke-width', 5);
+            
+            // create line for mortality rate
+            morter = svg.append("path")
+            .datum(data)
+              .attr("class", "line")
+              .attr("d", function(d) { return mortalityLine(d.values); })
+            .style('stroke', 'grey')
+            .style('stroke-width', 5);
+                
+                lines_made=true;
+            }
+                
+            else { // if there's already lines, transition them to the new data
+            lifer
+                .datum(data)
+                .transition()
+                .duration(1000)
+                .attr("d", function(d) { 
+                return lifeLine(d.values); });
+                
+            morter
+                .datum(data)
+                .transition()
+                .duration(1000)
+                .attr('d', function(d) {
+                return mortalityLine(d.values); });
+            }
+            
+        }
+		</script>
+    
+	</body>
+</html>
